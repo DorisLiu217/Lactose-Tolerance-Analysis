@@ -1,0 +1,164 @@
+---
+title: "Selected variables_ML"
+author: "Chiral Mehta"
+date: "2/20/2020"
+output: html_document
+---
+
+```{r}
+data <- read.csv("/Users/chiralmehta/cmehta/00_Chiral_Masters/HS_630_ShinyProject/two_label_with_selected_features_rn.csv")
+data
+```
+
+```{r}
+sum(is.na(data))
+colSums(is.na(data))
+summary(data)
+colnames(data)
+#data$pheno
+```
+
+For imputing Mode
+```{r}
+#Professor suggestion
+#Mode(x, na.rm = FALSE)
+#From DescTools v0.99.32
+```
+
+Performing test and train split on the dataset
+
+```{r}
+library(caret)
+# Create index to split based on labels  
+index <- createDataPartition(data$pheno, p=0.75, list=FALSE )
+
+# Subset training set with index
+data.training <- data[index,]
+data.training.pheno <- data.training$pheno
+
+# Subset test set with index
+data.test <- data[-index,]
+data.test.pheno <- data.test$pheno
+
+```
+
+```{r}
+typeof(data.training)
+typeof(data.test)
+```
+
+Finding out the number of NAs in training dataset
+```{r}
+colSums(is.na(data.training))
+```
+
+Imputing with Mode
+
+```{r}
+library(imputeTS)
+data.training.mode <- data.training
+for (column in 2:length(data.training.mode)-1){
+  m <- na_mean(data.training.mode[,column], option = "mode")
+  data.training.mode[,column] <- ifelse(is.na(data.training.mode[,column]) == TRUE, m, data.training.mode[,column])
+}
+```
+
+Checking for NAs after imputing the dataset
+
+```{r}
+colSums(is.na(data.training.mode))
+```
+
+Train a model
+
+Ref: https://www.datacamp.com/community/tutorials/machine-learning-in-r
+
+```{r}
+model_knn <- train(data.training.mode[, 1:971], data.training.mode[, 972], method='knn')
+#first column is a users id, so subset 
+```
+
+```{r}
+# step function: with the 50 top variables
+# PCA
+# RF for 50 most imp
+
+```
+
+Imputing the test dataset with mode for NAs
+
+```{r}
+data.test.mode <- data.test
+for (column in 2:length(data.test.mode)-1){
+  m <- na_mean(data.test.mode[,column], option = "mode")
+  data.test.mode[,column] <- ifelse(is.na(data.test.mode[,column]) == TRUE, m, data.test.mode[,column])
+}
+```
+
+```{r}
+# Predict the labels of the test set
+predictions<-predict(object=model_knn,data.test.mode[, 1:971])
+```
+
+```{r}
+
+# Evaluate the predictions
+table(predictions)
+
+# Confusion matrix 
+confusionMatrix(predictions,data.test.mode[,972])
+
+```
+
+```{r}
+names(getModelInfo())
+```
+
+
+Random Forest
+
+```{r}
+library(randomForest)
+
+tunegrid <- expand.grid(mtry=c(2, 3, 4, 5, 6, 7))
+
+fit_randomforest_tunentree <- train(pheno ~., 
+                          method='rf',
+                                 data = data.training.mode, 
+                                 importance=TRUE,
+                                 tuneGrid = tunegrid,
+                          ntree = 3000)
+
+fit_randomforest_tunentree
+```
+
+```{r}
+
+test_pred_rf_tunentree <- predict(fit_randomforest_tunentree, newdata = data.test.mode)
+test_pred_rf_tunentree
+```
+
+```{r}
+confusionMatrix(test_pred_rf_tunentree, data.test.mode$pheno)
+```
+
+```{r}
+varImp_rf <- varImp(fit_randomforest_tunentree, scale = F)
+varImp_rf
+```
+
+```{r}
+plot(varImp_rf)
+```
+
+```{r}
+print(sum(data.training.mode$pheno == 'intolerant'))
+print(sum(data.training.mode$pheno == 'tolerant'))
+```
+
+```{r}
+print(sum(data.test.mode$pheno == 'intolerant'))
+print(sum(data.test.mode$pheno == 'tolerant'))
+```
+
+
