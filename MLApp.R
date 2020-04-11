@@ -40,6 +40,9 @@ ui <- dashboardPage(
                 sidebarLayout(
                   sidebarPanel(
                     titlePanel('KNN'),
+                    sliderInput('trainPercent', 'Training dataset percentage',min = 1, max = 99, value = 80),
+                    textInput('k', "Enter k's value", value = 3),
+            
                   ),
                   mainPanel(
                   )
@@ -63,8 +66,7 @@ server <- function(input, output, session){
     if (colnames[1] != 'names' || colnames[ncol(df)] != 'pheno') {
       return("Input file formate error: Please make sure the first column of the input file is names and the last column is pheno.")
     }
-    df_filtered <- df[, 2:ncol(df) - 1]
-    df_remove_col <- df_filtered[ , which(colMeans(!is.na(df_filtered)) > 1 - colPercent())]
+    df_remove_col <- df[ , which(colMeans(!is.na(df)) > 1 - colPercent())]
     cleaned_data<-df_remove_col[which(rowMeans(!is.na(df_remove_col)) > 1 - rowPercent()),]
     dataset2 <- na_mean(cleaned_data, option = replace(), maxgap = Inf)
     return (dataset2)
