@@ -39,12 +39,11 @@ ui <- dashboardPage(
               fluidPage(
                 sidebarLayout(
                   sidebarPanel(
-                    titlePanel('KNN'),
-                    sliderInput('trainPercent', 'Training dataset percentage',min = 1, max = 99, value = 80),
-                    textInput('k', "Enter k's value", value = 3),
-            
+                    titlePanel('K-nearest Neighbors Algorithm'),
+                    sliderInput('trainPercent', 'Training Set Percentage',min = 1, max = 99, value = 80),
                   ),
                   mainPanel(
+                    plotOutput('plot1')
                   )
                 )
               )
@@ -78,6 +77,34 @@ server <- function(input, output, session){
   output$table <- DT::renderDataTable(
     dataset(), options = list(scrollX = TRUE))
   
+  
+  # Prepare plot and KNN model
+  normalize <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x))) }
+  percent <- reactive({input$trainPercent / 100})
+  output$plot1 <- renderPlot({
+    # Normalize data
+    knn_df <- dataset()
+    nData <- as.data.frame(lapply(knn_df[, 2:(ncol(knn_df) - 1)], normalize))
+    print("line 91")
+    print(dim(nData))
+    # Divide into train and test set
+    trainNum <- floor(nrow(knn_df) * percent())
+    print("train num")
+    print(trainNum)
+    train_X <- nData[1:trainNum,]
+    test_X <- nData[(trainNum + 1): nrow(nData),]
+    train_label <- knn_df[1: trainNum, ncol(knn_df)]
+    test_label <- knn_df[(trainNum + 1): nrow(knn_df), ncol(knn_df)]
+    # Calculate accuracy
+    sqrtNum<- floor(sqrt(trainNum))
+    acc = vector()
+    for (i in 1:(sqrtNum + 10)) {
+      knnModel <- knn(train=train_X, test=test_X, cl=train_label, k=i)
+      acc[i] <- 100 * sum(test_label == knnModel)/NROW(test_label) 
+    }
+    plot(acc, type="b", xlab="K- Value",ylab="Accuracy level")
+  })
 }
 
 shinyApp(ui = ui, server = server)
