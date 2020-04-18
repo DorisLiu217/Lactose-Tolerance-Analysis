@@ -2,22 +2,14 @@ library(shiny)
 #install.packages("shinydashboard")
 library(shinydashboard)
 library(imputeTS)
+library(dplyr)
 library(ggplot2)
 library(viridis)
 library(plotly)
 library("DT") 
 
-
-data <- read.csv("two_label_with_selected_features_rn_v3.csv")
-
-data_filtered <- data[, 2:971]
-
-dataset <- na_mean(data_filtered, option = "mode", maxgap = Inf)
-myPCA <- prcomp(dataset, center = TRUE, scale. = TRUE)
-PCdata <- cbind(dataset, myPCA$x[,1:8])
-
 ui <- dashboardPage(
-  dashboardHeader(title = "Lactose Intolerance"),
+  dashboardHeader(title = "Lactose intolerance"),
   dashboardSidebar(
     sidebarMenu(
       menuItem("File input", tabName = "fileinput", icon = icon("tree")),
@@ -52,17 +44,17 @@ ui <- dashboardPage(
                 sidebarLayout(
                   sidebarPanel(
                     titlePanel('Principal Component Analysis'),
-                    selectizeInput('xcol', 'X Variable', choices = names(PCdata[c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8')]), 
-                                   options = list(create = TRUE), selected = names(PCdata[c('PC1')])),
-                    selectizeInput('ycol', 'Y Variable', choices = names(PCdata[c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8')]), 
-                                   options = list(create = TRUE), selected = names(PCdata[c('PC2')])),
+                    selectizeInput('xcol', 'X Variable', choices = c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8'), 
+                                   options = list(create = TRUE), selected = c('PC1')),
+                    selectizeInput('ycol', 'Y Variable', choices = c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8'), 
+                                   options = list(create = TRUE), selected = c('PC2')),
                     hr(),
                     checkboxInput("col", "Color by Phenotype", FALSE),
                     checkboxInput("stat_ellipse", "Add Ellipse", FALSE),
                     hr(),
                     h4("Scree and Cumulative Plots:"),
                     numericInput('ScreeNum', 'Number of Components', 1, min = 1, max = 8)
-                    ),
+                  ),
                   mainPanel(
                     tabsetPanel(id = "tabs", 
                                 tabPanel("PCA Plot", 
@@ -84,11 +76,11 @@ ui <- dashboardPage(
                 sidebarLayout(
                   sidebarPanel(
                     titlePanel('K-means Clustering'),
-                    selectizeInput('xcol2', 'X Variable', names(dataset), options = list(create = TRUE)),
-                    selectizeInput('ycol2', 'Y Variable', names(dataset), options = list(create = TRUE)),
+                    selectizeInput('xcol2', 'X Variable', choices = c(""), options = list(maxItems = 1)),
+                    selectizeInput('ycol2', 'Y Variable', choices = c(""), options = list(maxItems = 1)),
                     hr(),
                     checkboxInput('kmeans_colcluster', 'Color by Clusters', FALSE),
-                    numericInput('kmeans_countclusters', 'Cluster count', 2,
+                    numericInput('kmeans_clusters', 'Cluster count', 2,
                                  min = 1, max = 9),
                     checkboxInput('kmeans_pheno', 'Color by Pheno', FALSE)),
                   mainPanel(
@@ -102,12 +94,12 @@ ui <- dashboardPage(
                 sidebarLayout(
                   sidebarPanel(
                     titlePanel('3D PCA Plot'),
-                    selectizeInput('xcol3', 'X Variable', names(PCdata[c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8')]), 
-                                   options = list(create = TRUE), selected = names(PCdata[c('PC1')])),
-                    selectizeInput('ycol3', 'Y Variable', names(PCdata[c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8')]), 
-                                   options = list(create = TRUE), selected = names(PCdata[c('PC2')])),
-                    selectizeInput('zcol3', 'Z Variable', names(PCdata[c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8')]), 
-                                   options = list(create = TRUE), selected = names(PCdata[c('PC3')]))
+                    selectizeInput('xcol3', 'X Variable', choices = c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8'), 
+                                   options = list(create = TRUE), selected = c('PC1')),
+                    selectizeInput('ycol3', 'Y Variable', choices = c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8'), 
+                                   options = list(create = TRUE), selected = c('PC2')),
+                    selectizeInput('zcol3', 'Z Variable', choices = c('PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8'),
+                                   options = list(create = TRUE), selected = c('PC3'))
                   ),
                   mainPanel(
                     plotlyOutput("plot3")
@@ -144,37 +136,64 @@ ui <- dashboardPage(
 server <- function(input, output, session){
   dataset <- reactive({
     # default file if no user input
-    filePath = "two_label_with_selected_features_rn_v3.csv"
+    df <- read.csv("two_label_with_selected_features_rn_v3.csv")
     if (!is.null(input$file)) {
-      filePath <- input$file$datapath
+      df <- read.csv(input$file$datapath)
     }
-    df <- read.csv(filePath)
-    # check file format
     colnames<- names(df)
     if (colnames[1] != 'names' || colnames[ncol(df)] != 'pheno') {
       return("Input file formate error: Please make sure the first column of the input file is names and the last column is pheno.")
     }
-    df_filtered <- df[, 2:ncol(df) - 1]
-    df_remove_col <- data_filtered[ , which(colMeans(!is.na(data_filtered)) > 1 - colPercent())]
-    cleaned_data<-df_remove_col[which(rowMeans(!is.na(df_remove_col)) > 1 - rowPercent()),]
-    dataset2 <- na_mean(cleaned_data, option = replace(), maxgap = Inf)
-    return (dataset2)
+    return (df)
   })
+  
+  
+  # Filtered Dataset
+  dataset_filtered <- reactive({
+    df2 <- dataset()
+    df_filtered <- df2[ , 2:length(df2)]
+    df_remove_col <- df_filtered[ , which(colMeans(!is.na(df_filtered)) > 1 - colPercent())]
+    cleaned_data <- df_remove_col[which(rowMeans(!is.na(df_remove_col)) > 1 - rowPercent()),]
+    dataset2 <- na_mean(cleaned_data, option = replace(), maxgap = Inf)
+    return(dataset2)
+  })
+  
+  # Remove x% of rows and columns 
   colPercent <- reactive({as.numeric(input$colMissingPercent) / 100})
   rowPercent <- reactive({as.numeric(input$rowMissingPercent) / 100})
   replace <- reactive({input$replacement})
-
-  output$table <- DT::renderDataTable(
-    dataset(), options = list(scrollX = TRUE))
   
-  PData <- reactive({PCdata[, c(input$xcol, input$ycol)]})
+  
+  output$table <- DT::renderDataTable(
+    dataset_filtered(), options = list(scrollX = TRUE))
+  
+  # Extract pheno
+  phenotype <- reactive({
+    if (class(dataset_filtered()[, length(dataset_filtered())]) == "factor") {
+      dataset_filtered()[, length(dataset_filtered())]
+    } else {
+      as.factor(dataset_filtered()[, length(dataset_filtered())])
+    }
+  })
+  
+  data_without_labs <- reactive(dataset_filtered()[, 1:length(dataset_filtered()) - 1])
+  
+  # PCA
+  pr.out <- reactive({
+    prcomp(data_without_labs(), center = TRUE, scale. = TRUE)
+  })
+  
+  pca.x <- reactive({
+    as.data.frame(pr.out()$x[,1:8])
+  })
+  
   output$plot1 <- renderPlot({
-    g <- ggplot(PData(), aes_string(input$xcol, input$ycol)) + 
+    g <- ggplot(pca.x(), aes_string(input$xcol, input$ycol)) + 
       geom_point(shape = 21, col = "black") + 
       ggtitle("PCA Plot") + 
-      xlab(input$xcol2) + ylab(input$ycol2)
+      xlab(input$xcol) + ylab(input$ycol)
     if (input$col){
-      g <- g + aes(col = data$pheno, fill = data$pheno)
+      g <- g + aes(col = phenotype(), fill = phenotype())
     }
     
     if (input$stat_ellipse){
@@ -183,47 +202,80 @@ server <- function(input, output, session){
     g
   })
   
-  PData2 <- reactive({PCdata[, input$ScreeNum]})
+  # Variability of each principal component: pr.var
+  pr.var <- reactive({pr.out()$sdev^2})
+  # Variance explained by each principal component: pve
+  pve <- reactive({pr.var()/sum(pr.var())})
+  
   output$plot5 <- renderPlot({
-    screeplot(PData2(),
-              type = "lines", main = 'Scree Plot')
+    plot(pve(), xlab = "Principal Component",
+         ylab = "Proportion of Variance Explained",
+         main = "PCA Scree Plot",
+         ylim = c(0, 1), type = "b")
   })
   
-  selectedData <- reactive({
-    dataset[, c(input$xcol2, input$ycol2)]
+  output$plot6 <- renderPlot({
+    plot(cumsum(pve()), xlab = "Principal Component",
+         ylab = "Cumulative Proportion of Variance Explained",
+         main = "PCA Cumulative Plot",
+         ylim = c(0, 1), type = "l")
   })
+  
+  observe({
+    xcol2 <- names(data_without_labs()[,1:length(data_without_labs())])
+    updateSelectizeInput(session, "xcol2",
+                         choices = xcol2,
+                         selected = "rs4988235",
+                         options = list(maxItems = 1))
+  })
+  
+  observe({
+    ycol2 <- names(data_without_labs()[,1:length(data_without_labs())])
+    updateSelectizeInput(session, "ycol2",
+                         choices = ycol2,
+                         options = list(maxItems = 1),
+                         selected = "rs182549")
+  })
+  
   kmeans_countclusters <- reactive({
-    kmeans(selectedData(), input$kmeans_countclusters)
+    kmeans(data_without_labs(), input$kmeans_clusters)
   })
+  
+  km_cluster <- reactive({as.factor(kmeans_countclusters()$cluster)})
+  
+  km_center <- reactive({as.data.frame(kmeans_countclusters()$centers)})
   
   output$plot2 <- renderPlot({
-    g1 <- ggplot(selectedData(), aes_string(input$xcol2, input$ycol2)) +
+    g1 <- ggplot(data_without_labs(), aes_string(input$xcol2, input$ycol2)) +
       geom_jitter(position = position_jitter(width = 0.5, height = 0.5), shape = 21) + 
       ggtitle("K-means Clustering Plot") + 
       xlab(input$xcol2) + ylab(input$ycol2)
     if (input$kmeans_colcluster){
-      g1 <- g1 + aes(col = (kmeans_countclusters()$kmeans_colcluster), fill = (kmeans_countclusters()$kmeans_colcluster)) +
-        annotate("point", x = kmeans_countclusters()$centers[, 1], y = kmeans_countclusters()$centers[, 2],
+      g1 <- g1 + aes(col = km_cluster(), fill = km_cluster()) +
+        annotate("point", x = km_center()[,1], y = km_center()[,2],
                  size = 5, colour = 'red')
     }
     if (input$kmeans_pheno){
-      g1 <- g1 + aes(col = data$pheno, fill = data$pheno)
+      g1 <- g1 + aes(col = phenotype(), fill = phenotype())
     }
     g1
   })
   
   x <- reactive({
-    PCdata[,input$xcol3]
+    pca.x()[, c(input$xcol3)]
   })
+  
   y <- reactive({
-    PCdata[,input$ycol3]
+    pca.x()[, c(input$ycol3)]
   })
+  
   z <- reactive({
-    PCdata[,input$zcol3]
+    pca.x()[, c(input$zcol3)]
   })
+  
   output$plot3 <- renderPlotly({
     plot_ly(x = x(), y = y(), z = as.matrix(z()),
-            color = data$pheno,
+            color = phenotype(),
             type = 'scatter3d') %>%
       add_markers(showlegend = FALSE) %>%
       layout(
@@ -236,7 +288,7 @@ server <- function(input, output, session){
   })
   
   distance <- reactive({
-    dist(dataset(), method = input$distance)
+    dist(data_without_labs(), method = input$distance)
   })
   
   clusters <- reactive({
@@ -270,7 +322,7 @@ server <- function(input, output, session){
         if (is.leaf(n)) {
           a <- attributes(n)
           index <- as.numeric(as.character(a$label))
-          label <- data[index, ncol(data)]
+          label <- dataset()[index, ncol(dataset())]
           col <- "red"
           if (label == "tolerant") {
             col <- "blue"
