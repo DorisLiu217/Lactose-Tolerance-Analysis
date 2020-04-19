@@ -4,7 +4,11 @@ library(shinydashboard)
 library(imputeTS)
 library(ggplot2)
 library(viridis)
-library(plotly)
+library(caret)
+library(rattle)
+library(rpart)
+library(e1071)
+library(class)
 library("DT") 
 
 ui <- dashboardPage(
@@ -12,7 +16,8 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("File input", tabName = "fileinput", icon = icon("tree")),
-      menuItem("KNN", tabName = "knn", icon = icon("tree"))
+      menuItem("KNN", tabName = "knn", icon = icon("tree")),
+      menuItem("Decision Tree", tabName = "decision_tree", icon = icon("tree"))
     )
   ),
   dashboardBody(
@@ -47,6 +52,21 @@ ui <- dashboardPage(
                   )
                 )
               )
+      ),
+      tabItem(tabName = "decision_tree",
+              fluidPage(
+                titlePanel(title = "RPART Decision Tree"
+                ),
+                sidebarLayout(
+                  sidebarPanel(
+                    selectizeInput('predictor1', 'SNPs', choices = c(""), options = list(maxItems = 1))
+                  ),
+                  mainPanel(
+                    
+                    plotOutput("plot2")
+                  )
+                )
+              )
       )
     )
   )
@@ -65,6 +85,7 @@ server <- function(input, output, session){
     if (colnames[1] != 'names' || colnames[ncol(df)] != 'pheno') {
       return("Input file formate error: Please make sure the first column of the input file is names and the last column is pheno.")
     }
+    df <- df[,2:length(df)]
     df_remove_col <- df[ , which(colMeans(!is.na(df)) > 1 - colPercent())]
     cleaned_data<-df_remove_col[which(rowMeans(!is.na(df_remove_col)) > 1 - rowPercent()),]
     dataset2 <- na_mean(cleaned_data, option = replace(), maxgap = Inf)
@@ -73,7 +94,7 @@ server <- function(input, output, session){
   colPercent <- reactive({as.numeric(input$colMissingPercent) / 100})
   rowPercent <- reactive({as.numeric(input$rowMissingPercent) / 100})
   replace <- reactive({input$replacement})
-
+  
   output$table <- DT::renderDataTable(
     dataset(), options = list(scrollX = TRUE))
   
@@ -104,6 +125,43 @@ server <- function(input, output, session){
       acc[i] <- 100 * sum(test_label == knnModel)/NROW(test_label) 
     }
     plot(acc, type="b", xlab="K- Value",ylab="Accuracy level")
+  })
+  
+  # Decsion Tree Plot 
+  
+  observe({
+    predictor1 <- names(dataset()[,1:length(dataset()) - 1])
+    updateSelectizeInput(session, "predictor1",
+                         choices = predictor1,
+                         selected = "rs4988235",
+                         options = list(maxItems = 1))
+  })
+  
+  
+  # fit the RPART model per chosen predictors    
+  modelfit <- reactive({
+    X1 = input$predictor1
+    train(data = dataset()[,c("pheno", X1)], 
+          pheno ~ ., method = "rpart",
+          control=rpart.control(minsplit=1, minbucket=1, cp=0.001))
+  })
+  
+  # generate predictions
+  predictfit <- reactive({
+    
+    fit = modelfit()
+    
+    X1 = input$predictor1
+    predict(fit, newdata = dataset()[,c("pheno", X1)])
+    
+  })
+  
+  output$plot2 <- renderPlot({
+    
+    fit = modelfit()
+    
+    fancyRpartPlot(fit$finalModel)
+    
   })
 }
 
